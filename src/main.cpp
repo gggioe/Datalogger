@@ -12,8 +12,8 @@
 #define ch1_alert_pin 36
 #define ch2_alert_pin 35
 
-#define T_LOG true    // attiva/disattiva l'inizializzazione degli NTC
-#define powerLog true // attiva/disattiva l'inizializzazione degli INA
+#define T_LOG true    // attiva/disattiva gli NTC
+#define powerLog true // attiva/disattiva gli INA
 
 #define NTC1_PIN 6
 #define NTC2_PIN 4
@@ -23,11 +23,11 @@
 #define I2C_SDA 47
 #define I2C_SCL 48
 
-#define SCREEN_WIDTH 128 // OLED display width, in pixels
-#define SCREEN_HEIGHT 64 // OLED display height, in pixels
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 64 
 
-#define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
-#define SCREEN_ADDRESS 0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
+#define OLED_RESET     -1 
+#define SCREEN_ADDRESS 0x3C 
 
 #define startb 14
 #define stopb 15
@@ -36,10 +36,10 @@ bool century = false;
 bool h12Flag;
 bool pmFlag;
 
-bool alreadystarted = false;  //display timer
+bool alreadystarted = false;        // display timer
 unsigned long t;
 
-bool alreadystarted2 = false;       //timer che refresha le variabili pulsante
+bool alreadystarted2 = false;       // timer che refresha le variabili pulsante
 unsigned long t2;             
 
 bool serial_log = false;
@@ -59,11 +59,9 @@ Adafruit_INA228 ch2 = Adafruit_INA228();
 
 DS3231 rtc;
 
-uint8_t mode = 1; // 1 = current logger con o senza temp, 2 = solo temp logger
+uint8_t mode = 1;                  // numero pagina 
 uint8_t startstatus=0;
 uint8_t stopstatus=0;
-
-
 
 float ntcToTemperature(int adcValue) {
 
@@ -137,10 +135,9 @@ void getDateStuff(byte& year, byte& month, byte& date, byte& dOW, byte& hour, by
     second = temp1*10 + temp2;
 }
 
-// TODO: sd, influxdb
+// TODO: SD_log, influxdb
 
-void screentoggle(){
-
+void screentoggle(){    // standby schermo
 
   if(!alreadystarted){
 
@@ -163,7 +160,7 @@ void screentoggle(){
   }
 }
 
-void var_refresh(){
+void var_refresh(){     // ogni secondo resetta le variabili dei pulsanti
 
   if(!alreadystarted2){
 
@@ -183,7 +180,6 @@ void var_refresh(){
   }
 }
 
-
 void setup() {
 
   Serial.begin(115200);
@@ -195,14 +191,12 @@ void setup() {
   display.setTextColor(SSD1306_WHITE);
   display.clearDisplay();
 
-
   pinMode(startb,INPUT);
   pinMode(stopb,INPUT);
 
   delay(100);
 
-
-  while(!digitalRead(startb) && !digitalRead(stopb)){
+  while(!digitalRead(startb) && !digitalRead(stopb)){  // config orologio
     
     display.setCursor(0,0);
     display.print("Inviare da terminale (115200 baud) la seguente stringa per impostare data e ora:    YYMMDDwHHMMSSx");
@@ -227,7 +221,6 @@ void setup() {
     delay(100);
   }
   
-
   if(T_LOG) { //se gli ntc sono abilitati inizializza i pin
 
     pinMode(NTC1_PIN, INPUT);
@@ -262,13 +255,12 @@ void setup() {
 
 }
 
-
 void loop() {
 
   screentoggle();  
   var_refresh();
 
-  if(!digitalRead(startb)){
+  if(!digitalRead(startb)){      // se vengono premuti i pulsanti start o stop e lo schermo è spento lo accende, se è già acceso switcha fra le pagine del menu, 
 
     alreadystarted=false; // se premo accende lo schermo e starta il timer
 
@@ -279,8 +271,8 @@ void loop() {
       serial_log=true;
     }
   }
-
-   if(!digitalRead(stopb)){
+                                 // se si tengono premuti per più di 1s starta il log mandando i dati alla seriale
+  if(!digitalRead(stopb)){       // TODO: implementare lo switch delle pagine
 
     alreadystarted=false; // se premo accende lo schermo e starta il timer
 
@@ -292,9 +284,9 @@ void loop() {
     }
   }
 
-  switch (mode) {
+  switch (mode) {                // modalità di funzionamento (datalogger, test corda, ecc)
 
-    case 1: // current logger con o senza temp
+    case 1: // power o ntc logger o entrambi
 
       bool ch1_ready; 
       bool ch2_ready; 
@@ -320,8 +312,8 @@ void loop() {
 
       ch1_ready = !digitalRead(ch1_alert_pin);  // acquisisce lo stato dell'ina1 (ready= low)
       ch2_ready = !digitalRead(ch2_alert_pin);  // acquisisce lo stato dell'ina2 (ready= low)
-
-      if(ch1_ready) {    // se sono pronti i dati del ch1
+     
+      if(ch1_ready && powerLog) {    // se sono pronti i dati del ch1
 
         busV1 = ch1.readBusVoltage();     // V
         shuntV1 = ch1.readShuntVoltage(); // mV (caduta sullo shunt)
@@ -332,7 +324,7 @@ void loop() {
         dieTemp1 = ch1.readDieTemp();     // °C
       }
   
-      if(ch2_ready) {    // se sono pronti i dati del ch2
+      if(ch2_ready && powerLog) {    // se sono pronti i dati del ch2
       
         busV2 = ch2.readBusVoltage();
         shuntV2 = ch2.readShuntVoltage();
@@ -343,7 +335,7 @@ void loop() {
         dieTemp2 = ch2.readDieTemp();
       }
 
-      if(T_LOG) {      //  se il log ntc è abilitato e i sensori sono pronti aggiunge alla riga dati le temperature, altrimenti non stampare nulla altrimenti crea una riga malformata con temperature non correlate
+      if(T_LOG) {                    //  se il log ntc è abilitato e i sensori sono pronti aggiunge alla riga dati le temperature
 
         temp1 = ntcToTemperature(analogRead(NTC1_PIN));
         temp2 = ntcToTemperature(analogRead(NTC2_PIN));
@@ -352,112 +344,115 @@ void loop() {
       }
 
       display.clearDisplay();
-        
-      display.setCursor(0,0);
-      display.print(busV1,3);
-      display.print("V");
-
-      display.setCursor(0,9);
-      display.print(shuntV1);
-      display.print("mV");
-
-      display.setCursor(0,18);
-      if(current1 < 1000.0){
-
-        display.print(current1);
-        display.print("mA");
-      }
-      else{
-        display.print(current1/1000.0);
-        display.print("A");
-      }
-
-      display.setCursor(0,27);
-      if(power1 < 1000.0){
-
-        display.print(power1);
-        display.print("mW");
-      }
-      else{
-        display.print(power1/1000.0);
-        display.print("W");
-      }
-
-      display.setCursor(0,36);
-      if(energy1 < 1000.0){
-
-        display.print(energy1);
-        display.print("mWh");
-      }
-      else{
-        display.print(energy1/1000.0);
-        display.print("Wh");
-      }
       
-      /*display.setCursor(0,45);
-      display.print(dieTemp1);
-      display.print("C");*/
+      if(powerLog){                  // se il log power è abilitato stampa i dati di potenza
 
-      display.setCursor(0,54);
-      display.print(rtc.getDate(), DEC);
-      display.print("/");
-      display.print(rtc.getMonth(century), DEC);
-      display.print("/");
-      display.print(rtc.getYear(), DEC);
+        display.setCursor(0,0);
+        display.print(busV1,3);
+        display.print("V");
+
+        display.setCursor(0,9);
+        display.print(shuntV1);
+        display.print("mV");
+
+        display.setCursor(0,18);
+        if(current1 < 1000.0){
+
+          display.print(current1);
+          display.print("mA");
+        }
+        else{
+          display.print(current1/1000.0);
+          display.print("A");
+        }
+
+        display.setCursor(0,27);
+        if(power1 < 1000.0){
+
+          display.print(power1);
+          display.print("mW");
+        }
+        else{
+          display.print(power1/1000.0);
+          display.print("W");
+        }
+
+        display.setCursor(0,36);
+        if(energy1 < 1000.0){
+
+          display.print(energy1);
+          display.print("mWh");
+        }
+        else{
+          display.print(energy1/1000.0);
+          display.print("Wh");
+        }
       
-      display.print(" ");
-      display.print(rtc.getHour(h12Flag, pmFlag), DEC); //24-hr
-      display.print(":");
-      display.print(rtc.getMinute(), DEC);
-      display.print(":");
-      display.println(rtc.getSecond(), DEC);
+        /*display.setCursor(0,45);
+        display.print(dieTemp1);
+        display.print("C");*/
 
-      display.setCursor(50,0);
-      display.print(busV2,3);
-      display.print("V");
-
-      display.setCursor(50,9);
-      display.print(shuntV2);
-      display.print("mV");
-
-      display.setCursor(50,18);
-      if (current2<1000.0){
-
-        display.print(current2);
-        display.print("mA");
-      }
-      else{
-        display.print(current2/1000.0);
-        display.print("A");
-      }
-
-      display.setCursor(50,27);
-      if(power2 < 1000.0){
-
-        display.print(power2);
-        display.print("mW");
-      }
-      else{
-        display.print(power2/1000.0);
-        display.print("W");
-      }
+        display.setCursor(0,54);
+        display.print(rtc.getDate(), DEC);
+        display.print("/");
+        display.print(rtc.getMonth(century), DEC);
+        display.print("/");
+        display.print(rtc.getYear(), DEC);
       
-      display.setCursor(50,36);
-      if(energy2 < 1000.0){
+        display.print(" ");
+        display.print(rtc.getHour(h12Flag, pmFlag), DEC); //24-hr
+        display.print(":");
+        display.print(rtc.getMinute(), DEC);
+        display.print(":");
+        display.println(rtc.getSecond(), DEC);
 
-        display.print(energy2);
-        display.print("mWh");
+        display.setCursor(50,0);
+        display.print(busV2,3);
+        display.print("V");
+
+        display.setCursor(50,9);
+        display.print(shuntV2);
+        display.print("mV");
+
+        display.setCursor(50,18);
+        if (current2<1000.0){
+
+          display.print(current2);
+          display.print("mA");
+        }
+        else{
+          display.print(current2/1000.0);
+          display.print("A");
+        }
+
+        display.setCursor(50,27);
+        if(power2 < 1000.0){
+
+          display.print(power2);
+          display.print("mW");
+        }
+        else{
+          display.print(power2/1000.0);
+          display.print("W");
+        }
+      
+        display.setCursor(50,36);
+        if(energy2 < 1000.0){
+
+          display.print(energy2);
+          display.print("mWh");
+        }
+        else{
+          display.print(energy2/1000.0);
+          display.print("Wh");
+        }
+
+        /*display.setCursor(50,45);
+        display.print(dieTemp2);
+        display.print("C");*/
       }
-      else{
-        display.print(energy2/1000.0);
-        display.print("Wh");
-      }
 
-      /*display.setCursor(50,45);
-      display.print(dieTemp2);
-      display.print("C");*/
-
-      if(T_LOG){ // se il log ntc è abilitato stampa le temperature, altrimenti non stampare nulla
+      if(T_LOG){                     // se il log ntc è abilitato stampa le temperature
 
         if(temp1 > -35 && temp1 < 100){
 
@@ -500,36 +495,42 @@ void loop() {
         display.print("Err");
         }
       }
-
+      
       display.display();
-
+      
       if(serial_log){
 
+        if(powerLog){
+
+          Serial.print(busV1);
+          Serial.print(",");
+          Serial.print(shuntV1);
+          Serial.print(",");
+          Serial.print(current1);
+          Serial.print(",");
+          Serial.print(power1);
+          Serial.print(",");
+          Serial.print(energy1);
+          Serial.print(",");
+
+          Serial.print(busV2);
+          Serial.print(",");
+          Serial.print(shuntV2);
+          Serial.print(",");
+          Serial.print(current2);
+          Serial.print(",");
+          Serial.print(power2);
+          Serial.print(",");
+          Serial.print(energy2);
+        }
         
-        Serial.print(busV1);
-        Serial.print(",");
-        Serial.print(shuntV1);
-        Serial.print(",");
-        Serial.print(current1);
-        Serial.print(",");
-        Serial.print(power1);
-        Serial.print(",");
-        Serial.print(energy1);
-        Serial.print(",");
-
-        Serial.print(busV2);
-        Serial.print(",");
-        Serial.print(shuntV2);
-        Serial.print(",");
-        Serial.print(current2);
-        Serial.print(",");
-        Serial.print(power2);
-        Serial.print(",");
-        Serial.print(energy2);
-
         if(T_LOG){
 
-          Serial.print(",");
+          if(powerLog){      
+
+            Serial.print(",");
+          }
+          
           Serial.print(temp1);
           Serial.print(",");
           Serial.print(temp2);
@@ -548,58 +549,10 @@ void loop() {
       
     break;
 
-    case 2: // solo temp logger
-    
-      temp1 = ntcToTemperature(analogRead(NTC1_PIN));
-      temp2 = ntcToTemperature(analogRead(NTC2_PIN));
-      temp3 = ntcToTemperature(analogRead(NTC3_PIN));
-      temp4 = ntcToTemperature(analogRead(NTC4_PIN));
 
-      display.clearDisplay();
 
-      if(temp1 > -35 && temp1 < 100){
 
-        display.setCursor(0,0);
-        display.print(temp1,1);
-      }
-      else{
-          display.setCursor(0,0);
-          display.print("Err");
-      }
 
-      if(temp2 > -35 && temp2 < 100){
-
-          display.setCursor(0,10);
-          display.print(temp2,1);
-      }
-      else{
-          display.setCursor(0,10);
-          display.print("Err");
-      }
-
-      if(temp3 > -35 && temp3 < 100){
-
-          display.setCursor(0,20);
-          display.print(temp3,1);
-      }
-      else{
-
-          display.setCursor(0,20);
-          display.print("Err");
-      }
-
-      if(temp4 > -35 && temp4 < 100){
-
-          display.setCursor(0,30);
-          display.print(temp4,1);
-      }
-      else{
-          display.setCursor(0,30);
-          display.print("Err");
-      }
-
-      display.display();
-
-      break;
   }
+
 }
