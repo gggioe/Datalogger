@@ -1,6 +1,10 @@
 #include <Arduino.h>
 #include <Wire.h>
 #include <Adafruit_INA228.h>
+#include <SPI.h>
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+#include <DS3231.h>
 
 #define INA1_ADDR 0x40 // 10000000b
 #define INA2_ADDR 0x41 // 10000001b
@@ -16,19 +20,58 @@
 #define NTC3_PIN 5
 #define NTC4_PIN 7
 
-uint8_t mode = 1; // 1 = current logger con o senza temp, 2 = solo temp logger
+#define I2C_SDA 47
+#define I2C_SCL 48
+
+#define SCREEN_WIDTH 128 // OLED display width, in pixels
+#define SCREEN_HEIGHT 64 // OLED display height, in pixels
+
+#define OLED_RESET     -1 // Reset pin # (or -1 if sharing Arduino reset pin)
+#define SCREEN_ADDRESS 0x3C ///< See datasheet for Address; 0x3D for 128x64, 0x3C for 128x32
+
+#define startb 14
+#define stopb 15
+
+bool century = false;
+bool h12Flag;
+bool pmFlag;
+
+bool alreadystarted = false;  //display timer
+unsigned long t;
+
+bool alreadystarted2 = false;       //timer che refresha le variabili pulsante
+unsigned long t2;             
+
+bool serial_log = false;
+
+byte year;
+byte month;
+byte date;
+byte dOW;
+byte hour;
+byte minute;
+byte second;
+
+Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 Adafruit_INA228 ch1 = Adafruit_INA228();
 Adafruit_INA228 ch2 = Adafruit_INA228();
 
+DS3231 rtc;
+
+uint8_t mode = 1; // 1 = current logger con o senza temp, 2 = solo temp logger
+uint8_t startstatus=0;
+uint8_t stopstatus=0;
+
+
 
 float ntcToTemperature(int adcValue) {
 
-    const float Vcc = 3.3;  // misurare poi la vcc
+    const float Vcc = 3.3;  
     const int ADC_MAX = 4095;
 
     const float R_fixed = 10000.0;   // r del partitore
-    const float Beta = 3435.0;       
+    const float Beta = 3435.0;       //3435.0 default
     const float T0 = 298.15;         
     const float R0 = 10000.0;        //Rntc a 25 gradi 
 
@@ -41,14 +84,149 @@ float ntcToTemperature(int adcValue) {
     float tempK = 1.0 / ( (1.0 / T0) + (1.0 / Beta) * log(R_ntc / R0) ); // calcolo Tk
     float tempC = tempK - 273.15; // calcolo gradi 
 
-    return tempC;
+    return tempC+2.15;               // offset
+}
+
+void getDateStuff(byte& year, byte& month, byte& date, byte& dOW, byte& hour, byte& minute, byte& second) {
+                  
+    // Call this if you notice something coming in on
+    // the serial port. The stuff coming in should be in
+    // the order YYMMDDwHHMMSS, with an 'x' at the end.
+    boolean gotString = false;
+    char inChar;
+    byte temp1, temp2;
+    char inString[20];
+    
+    byte j=0;
+    while (!gotString) {
+        if (Serial.available()) {
+            inChar = Serial.read();
+            inString[j] = inChar;
+            j += 1;
+            if (inChar == 'x') {
+                gotString = true;
+            }
+        }
+    }
+    Serial.println(inString);
+    // Read year first
+    temp1 = (byte)inString[0] -48;
+    temp2 = (byte)inString[1] -48;
+    year = temp1*10 + temp2;
+    // now month
+    temp1 = (byte)inString[2] -48;
+    temp2 = (byte)inString[3] -48;
+    month = temp1*10 + temp2;
+    // now date
+    temp1 = (byte)inString[4] -48;
+    temp2 = (byte)inString[5] -48;
+    date = temp1*10 + temp2;
+    // now Day of Week
+    dOW = (byte)inString[6] - 48;
+    // now hour
+    temp1 = (byte)inString[7] -48;
+    temp2 = (byte)inString[8] -48;
+    hour = temp1*10 + temp2;
+    // now minute
+    temp1 = (byte)inString[9] -48;
+    temp2 = (byte)inString[10] -48;
+    minute = temp1*10 + temp2;
+    // now second
+    temp1 = (byte)inString[11] -48;
+    temp2 = (byte)inString[12] -48;
+    second = temp1*10 + temp2;
+}
+
+// TODO: sd, influxdb
+
+void screentoggle(){
+
+
+  if(!alreadystarted){
+
+    t = millis();
+    alreadystarted = true;
+  }
+
+  else{
+
+    if((millis()-t) >= 5000){
+
+      t=0;
+      //alreadystarted = false; <-non resetta il timer altrimenti sopo 5s lo riaccende lolw
+      display.ssd1306_command(SSD1306_DISPLAYOFF);
+    }
+
+    else{
+      display.ssd1306_command(SSD1306_DISPLAYON);
+    }
+  }
+}
+
+void var_refresh(){
+
+  if(!alreadystarted2){
+
+    t2=millis();
+    alreadystarted2=true;
+  }
+
+  else{
+    if((millis()-t2) >= 1000){
+
+      t2 = 0;
+      alreadystarted2 = false; //resetta il flag (restarta il timer)
+
+      startstatus = 0;
+      stopstatus = 0;
+    }
+  }
 }
 
 
 void setup() {
 
   Serial.begin(115200);
-  Wire.begin(); 
+  Wire.begin(I2C_SDA, I2C_SCL); 
+
+  display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS);
+
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  display.clearDisplay();
+
+
+  pinMode(startb,INPUT);
+  pinMode(stopb,INPUT);
+
+  delay(100);
+
+
+  while(!digitalRead(startb) && !digitalRead(stopb)){
+    
+    display.setCursor(0,0);
+    display.print("Inviare da terminale (115200 baud) la seguente stringa per impostare data e ora:    YYMMDDwHHMMSSx");
+    display.display();
+
+    if (Serial.available()) {
+      getDateStuff(year, month, date, dOW, hour, minute, second);
+        
+      rtc.setClockMode(false);  // set to 24h
+        //setClockMode(true); // set to 12h
+        
+      rtc.setYear(year);
+      rtc.setMonth(month);
+      rtc.setDate(date);
+      rtc.setDoW(dOW);
+      rtc.setHour(hour);
+      rtc.setMinute(minute);
+      rtc.setSecond(second);
+        
+    }
+
+    delay(100);
+  }
+  
 
   if(T_LOG) { //se gli ntc sono abilitati inizializza i pin
 
@@ -84,25 +262,250 @@ void setup() {
 
 }
 
+
 void loop() {
+
+  screentoggle();  
+  var_refresh();
+
+  if(!digitalRead(startb)){
+
+    alreadystarted=false; // se premo accende lo schermo e starta il timer
+
+    startstatus++;
+
+    if(startstatus>20){
+
+      serial_log=true;
+    }
+  }
+
+   if(!digitalRead(stopb)){
+
+    alreadystarted=false; // se premo accende lo schermo e starta il timer
+
+    stopstatus++;
+
+    if(stopstatus>20){
+
+       serial_log=false;
+    }
+  }
 
   switch (mode) {
 
     case 1: // current logger con o senza temp
 
-      bool ch1_ready = !digitalRead(ch1_alert_pin);  // acquisisce lo stato dell'ina1 (ready= low)
-      bool ch2_ready = !digitalRead(ch2_alert_pin);  // acquisisce lo stato dell'ina2 (ready= low)
+      bool ch1_ready; 
+      bool ch2_ready; 
+
+      float busV1;
+      float shuntV1;
+      float current1;
+      float power1;
+      float energy1;
+      float dieTemp1;
+
+      float busV2;
+      float shuntV2;
+      float current2;
+      float power2;
+      float energy2;
+      float dieTemp2;
+
+      float temp1;
+      float temp2;
+      float temp3;
+      float temp4;
+
+      ch1_ready = !digitalRead(ch1_alert_pin);  // acquisisce lo stato dell'ina1 (ready= low)
+      ch2_ready = !digitalRead(ch2_alert_pin);  // acquisisce lo stato dell'ina2 (ready= low)
 
       if(ch1_ready) {    // se sono pronti i dati del ch1
 
-        float busV1 = ch1.readBusVoltage();     // V
-        float shuntV1 = ch1.readShuntVoltage(); // mV (caduta sullo shunt)
-        float current1 = ch1.readCurrent();     // mA
-        float power1 = ch1.readPower();         // mW
-        float energy1 = ch1.readEnergy();       // mWh
+        busV1 = ch1.readBusVoltage();     // V
+        shuntV1 = ch1.readShuntVoltage(); // mV (caduta sullo shunt)
+        current1 = ch1.readCurrent();     // mA
+        power1 = ch1.readPower();         // mW
+        energy1 = ch1.readEnergy();       // mWh
         //float charge1 = ch1.readCharge();     // C
-        float dieTemp1 = ch1.readDieTemp();     // °C
+        dieTemp1 = ch1.readDieTemp();     // °C
+      }
+  
+      if(ch2_ready) {    // se sono pronti i dati del ch2
+      
+        busV2 = ch2.readBusVoltage();
+        shuntV2 = ch2.readShuntVoltage();
+        current2 = ch2.readCurrent();
+        power2 = ch2.readPower();
+        energy2 = ch2.readEnergy();
+        //float charge2 = ch2.readCharge();
+        dieTemp2 = ch2.readDieTemp();
+      }
 
+      if(T_LOG) {      //  se il log ntc è abilitato e i sensori sono pronti aggiunge alla riga dati le temperature, altrimenti non stampare nulla altrimenti crea una riga malformata con temperature non correlate
+
+        temp1 = ntcToTemperature(analogRead(NTC1_PIN));
+        temp2 = ntcToTemperature(analogRead(NTC2_PIN));
+        temp3 = ntcToTemperature(analogRead(NTC3_PIN));
+        temp4 = ntcToTemperature(analogRead(NTC4_PIN));
+      }
+
+      display.clearDisplay();
+        
+      display.setCursor(0,0);
+      display.print(busV1,3);
+      display.print("V");
+
+      display.setCursor(0,9);
+      display.print(shuntV1);
+      display.print("mV");
+
+      display.setCursor(0,18);
+      if(current1 < 1000.0){
+
+        display.print(current1);
+        display.print("mA");
+      }
+      else{
+        display.print(current1/1000.0);
+        display.print("A");
+      }
+
+      display.setCursor(0,27);
+      if(power1 < 1000.0){
+
+        display.print(power1);
+        display.print("mW");
+      }
+      else{
+        display.print(power1/1000.0);
+        display.print("W");
+      }
+
+      display.setCursor(0,36);
+      if(energy1 < 1000.0){
+
+        display.print(energy1);
+        display.print("mWh");
+      }
+      else{
+        display.print(energy1/1000.0);
+        display.print("Wh");
+      }
+      
+      /*display.setCursor(0,45);
+      display.print(dieTemp1);
+      display.print("C");*/
+
+      display.setCursor(0,54);
+      display.print(rtc.getDate(), DEC);
+      display.print("/");
+      display.print(rtc.getMonth(century), DEC);
+      display.print("/");
+      display.print(rtc.getYear(), DEC);
+      
+      display.print(" ");
+      display.print(rtc.getHour(h12Flag, pmFlag), DEC); //24-hr
+      display.print(":");
+      display.print(rtc.getMinute(), DEC);
+      display.print(":");
+      display.println(rtc.getSecond(), DEC);
+
+      display.setCursor(50,0);
+      display.print(busV2,3);
+      display.print("V");
+
+      display.setCursor(50,9);
+      display.print(shuntV2);
+      display.print("mV");
+
+      display.setCursor(50,18);
+      if (current2<1000.0){
+
+        display.print(current2);
+        display.print("mA");
+      }
+      else{
+        display.print(current2/1000.0);
+        display.print("A");
+      }
+
+      display.setCursor(50,27);
+      if(power2 < 1000.0){
+
+        display.print(power2);
+        display.print("mW");
+      }
+      else{
+        display.print(power2/1000.0);
+        display.print("W");
+      }
+      
+      display.setCursor(50,36);
+      if(energy2 < 1000.0){
+
+        display.print(energy2);
+        display.print("mWh");
+      }
+      else{
+        display.print(energy2/1000.0);
+        display.print("Wh");
+      }
+
+      /*display.setCursor(50,45);
+      display.print(dieTemp2);
+      display.print("C");*/
+
+      if(T_LOG){ // se il log ntc è abilitato stampa le temperature, altrimenti non stampare nulla
+
+        if(temp1 > -35 && temp1 < 100){
+
+        display.setCursor(100,0);
+        display.print(temp1,1);
+        }
+        else{
+        display.setCursor(100,0);
+        display.print("Err");
+        }
+
+        if(temp2 > -35 && temp2 < 100){
+
+        display.setCursor(100,10);
+        display.print(temp2,1);
+        }
+        else{
+        display.setCursor(100,10);
+        display.print("Err");
+        }
+
+        if(temp3 > -35 && temp3 < 100){
+
+        display.setCursor(100,20);
+        display.print(temp3,1);
+        }
+        else{
+
+        display.setCursor(100,20);
+        display.print("Err");
+        }
+
+        if(temp4 > -35 && temp4 < 100){
+
+        display.setCursor(100,30);
+        display.print(temp4,1);
+        }
+        else{
+        display.setCursor(100,30);
+        display.print("Err");
+        }
+      }
+
+      display.display();
+
+      if(serial_log){
+
+        
         Serial.print(busV1);
         Serial.print(",");
         Serial.print(shuntV1);
@@ -113,20 +516,7 @@ void loop() {
         Serial.print(",");
         Serial.print(energy1);
         Serial.print(",");
-        Serial.print(dieTemp1);
-      }
-  
-      if(ch2_ready) {    // se sono pronti i dati del ch2
-      
-        float busV2 = ch2.readBusVoltage();
-        float shuntV2 = ch2.readShuntVoltage();
-        float current2 = ch2.readCurrent();
-        float power2 = ch2.readPower();
-        float energy2 = ch2.readEnergy();
-        //float charge2 = ch2.readCharge();
-        float dieTemp2 = ch2.readDieTemp();
 
-        Serial.print(",");
         Serial.print(busV2);
         Serial.print(",");
         Serial.print(shuntV2);
@@ -136,45 +526,80 @@ void loop() {
         Serial.print(power2);
         Serial.print(",");
         Serial.print(energy2);
-        Serial.print(",");
-        Serial.print(dieTemp2);
+
+        if(T_LOG){
+
+          Serial.print(",");
+          Serial.print(temp1);
+          Serial.print(",");
+          Serial.print(temp2);
+          Serial.print(",");
+          Serial.print(temp3);
+          Serial.print(",");
+          Serial.print(temp4);
+          Serial.println("");
+        }
+
+        else{
+
+          Serial.println("");
+        }
       }
-
-      if(T_LOG && ch1_ready && ch2_ready) {      //  se il log ntc è abilitato e i sensori sono pronti aggiunge alla riga dati le temperature, altrimenti non stampare nulla altrimenti crea una riga malformata con temperature non correlate
-
-        float temp1 = ntcToTemperature(analogRead(NTC1_PIN));
-        float temp2 = ntcToTemperature(analogRead(NTC2_PIN));
-        float temp3 = ntcToTemperature(analogRead(NTC3_PIN));
-        float temp4 = ntcToTemperature(analogRead(NTC4_PIN));
-
-        Serial.print(",");
-        Serial.print(temp1);
-        Serial.print(",");
-        Serial.print(temp2);
-        Serial.print(",");
-        Serial.print(temp3);
-        Serial.print(",");
-        Serial.print(temp4);
-      }
-
-      Serial.println(); // fine riga dati
-      break;
+      
+    break;
 
     case 2: // solo temp logger
     
-      float temp1 = ntcToTemperature(analogRead(NTC1_PIN));
-      float temp2 = ntcToTemperature(analogRead(NTC2_PIN));
-      float temp3 = ntcToTemperature(analogRead(NTC3_PIN));
-      float temp4 = ntcToTemperature(analogRead(NTC4_PIN));
+      temp1 = ntcToTemperature(analogRead(NTC1_PIN));
+      temp2 = ntcToTemperature(analogRead(NTC2_PIN));
+      temp3 = ntcToTemperature(analogRead(NTC3_PIN));
+      temp4 = ntcToTemperature(analogRead(NTC4_PIN));
 
-      Serial.print(temp1);
-      Serial.print(",");
-      Serial.print(temp2);
-      Serial.print(",");
-      Serial.print(temp3);
-      Serial.print(",");
-      Serial.print(temp4);
-      Serial.println();
+      display.clearDisplay();
+
+      if(temp1 > -35 && temp1 < 100){
+
+        display.setCursor(0,0);
+        display.print(temp1,1);
+      }
+      else{
+          display.setCursor(0,0);
+          display.print("Err");
+      }
+
+      if(temp2 > -35 && temp2 < 100){
+
+          display.setCursor(0,10);
+          display.print(temp2,1);
+      }
+      else{
+          display.setCursor(0,10);
+          display.print("Err");
+      }
+
+      if(temp3 > -35 && temp3 < 100){
+
+          display.setCursor(0,20);
+          display.print(temp3,1);
+      }
+      else{
+
+          display.setCursor(0,20);
+          display.print("Err");
+      }
+
+      if(temp4 > -35 && temp4 < 100){
+
+          display.setCursor(0,30);
+          display.print(temp4,1);
+      }
+      else{
+          display.setCursor(0,30);
+          display.print("Err");
+      }
+
+      display.display();
+
       break;
   }
 }
