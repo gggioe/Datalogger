@@ -32,6 +32,10 @@
 #define startb 14
 #define stopb 15
 
+#define stb_time 30000              // tempo di off schermo
+#define holdb_sample 20             // mumero di campioni consecutivi prima di considerare il pulsante "tenuto premuto"
+#define refresh_time 1000           // tempo di refresh variabili pulsanti
+
 bool century = false;
 bool h12Flag;
 bool pmFlag;
@@ -147,7 +151,7 @@ void screentoggle(){    // standby schermo
 
   else{
 
-    if((millis()-t) >= 5000){
+    if((millis()-t) >= stb_time){
 
       t=0;
       //alreadystarted = false; <-non resetta il timer altrimenti sopo 5s lo riaccende lolw
@@ -160,7 +164,7 @@ void screentoggle(){    // standby schermo
   }
 }
 
-void var_refresh(){     // ogni secondo resetta le variabili dei pulsanti
+void var_refresh(){     // ogni tot resetta le variabili dei pulsanti
 
   if(!alreadystarted2){
 
@@ -169,7 +173,7 @@ void var_refresh(){     // ogni secondo resetta le variabili dei pulsanti
   }
 
   else{
-    if((millis()-t2) >= 1000){
+    if((millis()-t2) >= refresh_time){
 
       t2 = 0;
       alreadystarted2 = false; //resetta il flag (restarta il timer)
@@ -266,7 +270,7 @@ void loop() {
 
     startstatus++;
 
-    if(startstatus>20){
+    if(startstatus>holdb_sample){
 
       serial_log=true;
     }
@@ -278,7 +282,7 @@ void loop() {
 
     stopstatus++;
 
-    if(stopstatus>20){
+    if(stopstatus>holdb_sample){
 
        serial_log=false;
     }
@@ -496,6 +500,12 @@ void loop() {
         }
       }
       
+      if(serial_log){
+        
+        display.setCursor(100,54);
+        display.print("LOG");
+      }
+
       display.display();
       
       if(serial_log){
@@ -549,9 +559,9 @@ void loop() {
       
     break;
 
+    case 2: // test corda
 
-
-
+    break;
 
   }
 
