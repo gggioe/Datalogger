@@ -20,7 +20,7 @@
 
 #define T_LOG true    // attiva/disattiva gli NTC
 #define powerLog true // attiva/disattiva gli INA
-#define influx_log false // attiva/disattiva il log su influxdb
+//#define influx_log false // attiva/disattiva il log su influxdb
 
 #define NTC1_PIN 6
 #define NTC2_PIN 4
@@ -312,6 +312,7 @@ void setup() {
     ch2.setAlertType(INA228_ALERT_CONVERSION_READY);
   }
 
+  
 }
 
 void loop() {
@@ -372,7 +373,7 @@ void loop() {
       ch1_ready = !digitalRead(ch1_alert_pin);  // acquisisce lo stato dell'ina1 (ready= low)
       ch2_ready = !digitalRead(ch2_alert_pin);  // acquisisce lo stato dell'ina2 (ready= low)
      
-      if(ch1_ready && powerLog) {    // se sono pronti i dati del ch1
+      if(ch1_ready && powerLog) {            // se sono pronti i dati del ch1
 
         busV1 = ch1.readBusVoltage();     // V
         shuntV1 = ch1.readShuntVoltage(); // mV (caduta sullo shunt)
@@ -381,6 +382,7 @@ void loop() {
         energy1 = ch1.readEnergy();       // mWh
         //float charge1 = ch1.readCharge();     // C
         dieTemp1 = ch1.readDieTemp();     // °C
+
       }
   
       if(ch2_ready && powerLog) {    // se sono pronti i dati del ch2
@@ -555,7 +557,7 @@ void loop() {
         }
       }
       
-      if(serial_log || influx_log){
+      if(serial_log /*|| influx_log*/){
         
         display.setCursor(100,54);
         display.print("LOG");
@@ -565,8 +567,15 @@ void loop() {
       
       if(serial_log){                // se abilitato il log
 
-        if(powerLog){
+        Serial.print(rtc.getHour(h12Flag, pmFlag), DEC);
+        Serial.print(":");
+        Serial.print(rtc.getMinute(), DEC);
+        Serial.print(":");
+        Serial.print(rtc.getSecond(), DEC);
+        Serial.print(",");
 
+        if(powerLog){ 
+      
           Serial.print(busV1);
           Serial.print(",");
           Serial.print(shuntV1);
