@@ -152,7 +152,6 @@ void screentoggle(){    // standby schermo
     if((millis()-t) >= stb_time){
 
       t=0;
-      //alreadystarted = false; <-non resetta il timer altrimenti sopo 5s lo riaccende lolw
       display.ssd1306_command(SSD1306_DISPLAYOFF);
     }
 
@@ -182,9 +181,8 @@ void var_refresh(){     // ogni tot resetta le variabili dei pulsanti
   }
 }
 
-/* TODO: SD_log -> rimuovere resistenze 
-         influxdb -> troppo lento lolw
-
+/* TODO: SD_log -> implementare log su sd
+         menu -> implementare lo switch delle pagine
          */
 
 void setup() {
@@ -214,7 +212,6 @@ void setup() {
         
       rtc.setClockMode(false);  // set to 24h
         //setClockMode(true); // set to 12h
-        
       rtc.setYear(year);
       rtc.setMonth(month);
       rtc.setDate(date);
@@ -224,7 +221,6 @@ void setup() {
       rtc.setSecond(second);
         
     }
-
     delay(100);
   }
   
@@ -258,9 +254,7 @@ void setup() {
 
     ch1.setAlertType(INA228_ALERT_CONVERSION_READY); // alert quando la conversione è pronta
     ch2.setAlertType(INA228_ALERT_CONVERSION_READY);
-  }
-
-  
+  } 
 }
 
 void loop() {
@@ -280,7 +274,7 @@ void loop() {
     }
   }
                                  // se si tengono premuti per più di 1s starta il log mandando i dati alla seriale
-  if(!digitalRead(stopb)){       // TODO: implementare lo switch delle pagine
+  if(!digitalRead(stopb)){       
 
     alreadystarted=false; // se premo accende lo schermo e starta il timer
 
@@ -321,7 +315,7 @@ void loop() {
       ch1_ready = !digitalRead(ch1_alert_pin);  // acquisisce lo stato dell'ina1 (ready= low)
       ch2_ready = !digitalRead(ch2_alert_pin);  // acquisisce lo stato dell'ina2 (ready= low)
      
-      if(ch1_ready && powerLog) {            // se sono pronti i dati del ch1
+      if(ch1_ready && powerLog) {            
 
         busV1 = ch1.readBusVoltage();     // V
         shuntV1 = ch1.readShuntVoltage(); // mV (caduta sullo shunt)
@@ -333,7 +327,7 @@ void loop() {
 
       }
   
-      if(ch2_ready && powerLog) {    // se sono pronti i dati del ch2
+      if(ch2_ready && powerLog) {    
       
         busV2 = ch2.readBusVoltage();
         shuntV2 = ch2.readShuntVoltage();
@@ -344,7 +338,7 @@ void loop() {
         dieTemp2 = ch2.readDieTemp();
       }
 
-      if(T_LOG) {                    //  se il log ntc è abilitato e i sensori sono pronti aggiunge alla riga dati le temperature
+      if(T_LOG) {                    
 
         temp1 = ntcToTemperature(analogRead(NTC1_PIN));
         temp2 = ntcToTemperature(analogRead(NTC2_PIN));
