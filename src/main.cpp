@@ -5,12 +5,6 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <DS3231.h>
-/*#include <WiFiMulti.h>
-#include <InfluxDbClient.h>
-#include <InfluxDbCloud.h>*/
-
-/*WiFiMulti wifiMulti;
-#define DEVICE "ESP32"*/
 
 #define INA1_ADDR 0x40 // 10000000b
 #define INA2_ADDR 0x41 // 10000001b
@@ -20,7 +14,6 @@
 
 #define T_LOG true    // attiva/disattiva gli NTC
 #define powerLog true // attiva/disattiva gli INA
-//#define influx_log false // attiva/disattiva il log su influxdb
 
 #define NTC1_PIN 6
 #define NTC2_PIN 4
@@ -42,26 +35,6 @@
 #define stb_time 30000              // tempo di off schermo
 #define holdb_sample 20             // mumero di campioni consecutivi prima di considerare il pulsante "tenuto premuto"
 #define refresh_time 1000           // tempo di refresh variabili pulsanti
-
-
-/*
-#define WIFI_SSID ""
-// WiFi password
-#define WIFI_PASSWORD ""
-  
-#define INFLUXDB_URL ""
-#define INFLUXDB_TOKEN ""
-#define INFLUXDB_ORG ""
-#define INFLUXDB_BUCKET "Datalogger"
-  
-// Time zone info
-#define TZ_INFO "UTC2"
-
-// Declare InfluxDB client instance with preconfigured InfluxCloud certificate
-InfluxDBClient client(INFLUXDB_URL, INFLUXDB_ORG, INFLUXDB_BUCKET, INFLUXDB_TOKEN, InfluxDbCloud2CACert);
-
-// Declare Data point
-Point sensor("Acquisition"); */
 
 bool century = false;
 bool h12Flag;
@@ -211,37 +184,12 @@ void var_refresh(){     // ogni tot resetta le variabili dei pulsanti
 
 /* TODO: SD_log -> rimuovere resistenze 
          influxdb -> troppo lento lolw
-         log seriale -> aggiungere timestamp
 
          */
 
 void setup() {
 
   Serial.begin(115200);
-
-  /*/ Setup wifi
-  WiFi.mode(WIFI_STA);
-  wifiMulti.addAP(WIFI_SSID, WIFI_PASSWORD);
-
-  Serial.print("Connecting to wifi");
-  while (wifiMulti.run() != WL_CONNECTED) {
-    Serial.print(".");
-    delay(100);
-  }
-  Serial.println();
-  //https://www.pool.ntp.org/zone/
-  timeSync(TZ_INFO, "pool.ntp.org", "time.nis.gov");
-
-  // Check server connection
-  if (client.validateConnection()) {
-    Serial.print("Connected to InfluxDB: ");
-    Serial.println(client.getServerUrl());
-  }
-  else {
-    Serial.print("InfluxDB connection failed: ");
-    Serial.println(client.getLastErrorMessage());
-  } */
-
   Wire.begin(I2C_SDA, I2C_SCL); 
 
   display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS);
@@ -463,9 +411,14 @@ void loop() {
         display.print(" ");
         display.print(rtc.getHour(h12Flag, pmFlag), DEC); //24-hr
         display.print(":");
+
+        if(rtc.getMinute() < 10){
+          display.print("0");
+        }
+        
         display.print(rtc.getMinute(), DEC);
-        display.print(":");
-        display.println(rtc.getSecond(), DEC);
+        /*display.print(":");
+        display.println(rtc.getSecond(), DEC);*/
 
         display.setCursor(50,0);
         display.print(busV2,3);
@@ -557,7 +510,7 @@ void loop() {
         }
       }
       
-      if(serial_log /*|| influx_log*/){
+      if(serial_log){
         
         display.setCursor(100,54);
         display.print("LOG");
@@ -620,36 +573,6 @@ void loop() {
           Serial.println("");
         }
       }
-      /*
-      if(influx_log && wifiMulti.run() == WL_CONNECTED){    // se è abilitato il log su influx e il wifi è connesso
-
-        sensor.clearFields();
-
-        if(powerLog){
-
-          sensor.addField("busV1", busV1);
-          sensor.addField("shuntV1", shuntV1);
-          sensor.addField("current1", current1);
-          sensor.addField("power1", power1);
-          sensor.addField("energy1", energy1);
-
-          sensor.addField("busV2", busV2);
-          sensor.addField("shuntV2", shuntV2);
-          sensor.addField("current2", current2);
-          sensor.addField("power2", power2);
-          sensor.addField("energy2", energy2);
-        }
-
-        if(T_LOG){
-
-          sensor.addField("T1", temp1);
-          sensor.addField("T2", temp2);
-          sensor.addField("T3", temp3);
-          sensor.addField("T4", temp4);
-        }
-
-        client.writePoint(sensor);
-      }*/
 
     break;
 
