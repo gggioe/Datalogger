@@ -49,8 +49,8 @@ bool serial_log = false;
 
 bool displaystatus = true; //acceso
 
-bool startstatus = false;
-bool stopstatus = false;
+uint8_t startstatus = 0;
+uint8_t stopstatus = 0;
 
 byte year;
 byte month;
@@ -183,6 +183,62 @@ void var_refresh(){     // ogni tot resetta le variabili dei pulsanti
   }
 }
 
+void button_acq(){      // acquisisce i pulsanti, detecta se sono premuti una volta o tenuti premuti e fa le robe del caso
+
+  if(!digitalRead(startb) && !displaystatus){     // se premo start e il display è spento
+
+    alreadystarted=false; // accende lo schermo e starta il timer
+  }
+
+  while(!digitalRead(startb) && displaystatus){                                         // altrimenti
+
+    alreadystarted=false;
+
+    if(startstatus<254){   //previene l'overflow
+      startstatus++;   // flag di pulsante premuto 
+      delay(50);
+    }
+    //Serial.println(startstatus);
+  }
+
+  if(displaystatus && mode<4 && startstatus>0 && startstatus < 20){   //se è stato premuto per < 50 campioni (20 campioni x 50ms = 1s)
+      startstatus=0;
+      mode++;
+  }
+  
+  if(displaystatus && startstatus>20 && startstatus <= 255){   // tenuto premuto per più di 1s
+      startstatus=0;
+      serial_log=true;                                         // attiva log
+  }
+
+  if(!digitalRead(stopb) && !displaystatus){       
+
+    alreadystarted=false; //  accende lo schermo e starta il timer  
+  }
+  while(!digitalRead(stopb) && displaystatus){
+
+    alreadystarted=false;
+
+    if(stopstatus<254 && displaystatus){
+      stopstatus++; 
+      delay(50);
+    }
+    //Serial.println(stopstatus); 
+  }
+
+  if(displaystatus && mode>1 && stopstatus>0 && stopstatus < 20){   //se è stato premuto per < 20 campioni (20 campioni x 50ms = 1s)
+
+    stopstatus=0;
+    mode--;                                                        // switcha menu
+  }
+
+  if(displaystatus && stopstatus>20 && stopstatus <=255){
+    stopstatus=0;
+    serial_log=false;
+  }
+}
+
+
 /* TODO: SD_log -> implementare log su sd
          menu -> implementare lo switch delle pagine
          */
@@ -263,28 +319,7 @@ void loop() {
 
   screentoggle();  
   var_refresh();
-
-  if(!digitalRead(startb)){
-
-    alreadystarted=false; // accende lo schermo e starta il timer
-    startstatus = true;   // flag di pulsante premuto 
-
-    if(displaystatus && mode<4){
-      mode++;
-      delay(300);
-    }
-  }   
-  
-  if(!digitalRead(stopb)){       
-
-    alreadystarted=false; //  accende lo schermo e starta il timer  
-    stopstatus=true;   
-      
-    if(displaystatus && mode>1){
-      mode--;
-      delay(300);
-    }
-  }
+  button_acq();
   
   switch (mode) {                // modalità di funzionamento (datalogger, test corda, ecc)
 
