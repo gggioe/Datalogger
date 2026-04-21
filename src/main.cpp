@@ -32,21 +32,25 @@
 #define startb 14
 #define stopb 15
 
-#define stb_time 30000              // tempo di off schermo
-#define holdb_sample 20             // mumero di campioni consecutivi prima di considerare il pulsante "tenuto premuto"
+#define stb_time 3000             // tempo di off schermo
 #define refresh_time 1000           // tempo di refresh variabili pulsanti
 
 bool century = false;
 bool h12Flag;
 bool pmFlag;
 
-bool alreadystarted = false;        // display timer
+bool alreadystarted = false;        // display timer (timer startato o no)
 unsigned long t;
 
 bool alreadystarted2 = false;       // timer che refresha le variabili pulsante
 unsigned long t2;             
 
 bool serial_log = false;
+
+bool displaystatus = true; //acceso
+
+bool startstatus = false;
+bool stopstatus = false;
 
 byte year;
 byte month;
@@ -64,8 +68,7 @@ Adafruit_INA228 ch2 = Adafruit_INA228();
 DS3231 rtc;
 
 uint8_t mode = 1;                  // numero pagina 
-uint8_t startstatus=0;
-uint8_t stopstatus=0;
+
 
 float ntcToTemperature(int adcValue) {
 
@@ -153,10 +156,12 @@ void screentoggle(){    // standby schermo
 
       t=0;
       display.ssd1306_command(SSD1306_DISPLAYOFF);
+      displaystatus=false;
     }
 
     else{
       display.ssd1306_command(SSD1306_DISPLAYON);
+      displaystatus=true;
     }
   }
 }
@@ -169,14 +174,11 @@ void var_refresh(){     // ogni tot resetta le variabili dei pulsanti
     alreadystarted2=true;
   }
 
-  else{
-    if((millis()-t2) >= refresh_time){
+  else{                                  
+    if((millis()-t2) >= refresh_time){    //se è arrivato il momento di refreshare le variabili
 
       t2 = 0;
       alreadystarted2 = false; //resetta il flag (restarta il timer)
-
-      startstatus = 0;
-      stopstatus = 0;
     }
   }
 }
@@ -262,30 +264,28 @@ void loop() {
   screentoggle();  
   var_refresh();
 
-  if(!digitalRead(startb)){      // se vengono premuti i pulsanti start o stop e lo schermo è spento lo accende, se è già acceso switcha fra le pagine del menu, 
+  if(!digitalRead(startb)){
 
-    alreadystarted=false; // se premo accende lo schermo e starta il timer
+    alreadystarted=false; // accende lo schermo e starta il timer
+    startstatus = true;   // flag di pulsante premuto 
 
-    startstatus++;
-
-    if(startstatus>holdb_sample){
-
-      serial_log=true;
+    if(displaystatus && mode<4){
+      mode++;
+      delay(300);
     }
-  }
-                                 // se si tengono premuti per più di 1s starta il log mandando i dati alla seriale
+  }   
+  
   if(!digitalRead(stopb)){       
 
-    alreadystarted=false; // se premo accende lo schermo e starta il timer
-
-    stopstatus++;
-
-    if(stopstatus>holdb_sample){
-
-       serial_log=false;
+    alreadystarted=false; //  accende lo schermo e starta il timer  
+    stopstatus=true;   
+      
+    if(displaystatus && mode>1){
+      mode--;
+      delay(300);
     }
   }
-
+  
   switch (mode) {                // modalità di funzionamento (datalogger, test corda, ecc)
 
     case 1: // power o ntc logger o entrambi
@@ -567,13 +567,35 @@ void loop() {
           Serial.println("");
         }
       }
-
     break;
 
-    case 2: // test corda
 
+    case 2:                          // test corda
+
+      display.clearDisplay();
+      display.setCursor(0,0);
+      display.print("pag2");
+      display.display();
+      
     break;
 
+    case 3:                        
+
+      display.clearDisplay();
+      display.setCursor(0,0);
+      display.print("pag3");
+      display.display();
+      
+    break;
+
+    case 4:                          // test stocazzo
+
+      display.clearDisplay();
+      display.setCursor(0,0);
+      display.print("pag4 (andrea gay)");
+      display.display();
+      
+    break;
   }
 
 }
