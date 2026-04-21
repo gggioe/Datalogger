@@ -32,18 +32,18 @@
 #define startb 14
 #define stopb 15
 
-#define stb_time 3000             // tempo di off schermo
-#define refresh_time 1000           // tempo di refresh variabili pulsanti
+#define stb_time 10000             // tempo di off schermo
+#define refresh_time 1000          // tempo di refresh variabili pulsanti
 
 bool century = false;
 bool h12Flag;
 bool pmFlag;
 
 bool alreadystarted = false;        // display timer (timer startato o no)
-unsigned long t;
+unsigned long t;     
 
 bool alreadystarted2 = false;       // timer che refresha le variabili pulsante
-unsigned long t2;             
+unsigned long t2;    
 
 bool serial_log = false;
 
@@ -179,6 +179,8 @@ void var_refresh(){     // ogni tot resetta le variabili dei pulsanti
 
       t2 = 0;
       alreadystarted2 = false; //resetta il flag (restarta il timer)
+      startstatus=0;
+      stopstatus=0;
     }
   }
 }
@@ -190,57 +192,53 @@ void button_acq(){      // acquisisce i pulsanti, detecta se sono premuti una vo
     alreadystarted=false; // accende lo schermo e starta il timer
   }
 
-  while(!digitalRead(startb) && displaystatus){                                         // altrimenti
+  while(!digitalRead(startb) && displaystatus && !serial_log && startstatus<=20){   // se premo il pulsante, lo schermo è accesè e non sta loggando acquisisce il pulsante
 
-    alreadystarted=false;
-
-    if(startstatus<254){   //previene l'overflow
-      startstatus++;   // flag di pulsante premuto 
-      delay(50);
-    }
-    //Serial.println(startstatus);
+    alreadystarted=false;                                    
+              
+    startstatus++;  
+    delay(50);
   }
 
-  if(displaystatus && mode<4 && startstatus>0 && startstatus < 20){   //se è stato premuto per < 50 campioni (20 campioni x 50ms = 1s)
+  if(displaystatus && mode<4 && startstatus>0 && startstatus <= 20){   //se è stato premuto per < 20 campioni (20 campioni x 50ms = 1s)
+
       startstatus=0;
+      serial_log=false;
       mode++;
   }
   
-  if(displaystatus && startstatus>20 && startstatus <= 255){   // tenuto premuto per più di 1s
+  if(displaystatus && startstatus>20){   // tenuto premuto per più di 1s (1.05s)
       startstatus=0;
-      serial_log=true;                                         // attiva log
+      serial_log=true;                   // attiva log
   }
 
   if(!digitalRead(stopb) && !displaystatus){       
 
     alreadystarted=false; //  accende lo schermo e starta il timer  
   }
-  while(!digitalRead(stopb) && displaystatus){
+
+  while(!digitalRead(stopb) && displaystatus && stopstatus <= 20 && (mode>1 || serial_log)){
 
     alreadystarted=false;
 
-    if(stopstatus<254 && displaystatus){
-      stopstatus++; 
-      delay(50);
-    }
-    //Serial.println(stopstatus); 
+    stopstatus++; 
+    delay(50);
   }
 
   if(displaystatus && mode>1 && stopstatus>0 && stopstatus < 20){   //se è stato premuto per < 20 campioni (20 campioni x 50ms = 1s)
 
     stopstatus=0;
+    serial_log=false;
     mode--;                                                        // switcha menu
   }
 
-  if(displaystatus && stopstatus>20 && stopstatus <=255){
+  if(displaystatus && stopstatus>20){
     stopstatus=0;
     serial_log=false;
   }
 }
 
-
 /* TODO: SD_log -> implementare log su sd
-         menu -> implementare lo switch delle pagine
          */
 
 void setup() {
@@ -319,8 +317,8 @@ void loop() {
 
   screentoggle();  
   var_refresh();
-  button_acq();
-  
+  button_acq();  
+
   switch (mode) {                // modalità di funzionamento (datalogger, test corda, ecc)
 
     case 1: // power o ntc logger o entrambi
