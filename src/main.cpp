@@ -5,6 +5,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <DS3231.h>
+#include "HX711.h"
 
 #define INA1_ADDR 0x40 // 10000000b
 #define INA2_ADDR 0x41 // 10000001b
@@ -35,6 +36,13 @@
 #define stb_time 10000             // tempo di off schermo
 #define refresh_time 1000          // tempo di refresh variabili pulsanti
 
+#define cal_factor -459.542
+
+#define max_n_page 2
+
+#define mos_s 37
+#define mos_gnd 38
+
 bool century = false;
 bool h12Flag;
 bool pmFlag;
@@ -48,6 +56,13 @@ unsigned long t2;
 bool serial_log = false;
 
 bool displaystatus = true; //acceso
+
+bool loadcell_cal = true;
+
+const int LOADCELL_DOUT_PIN = 39;       //hx711 pin
+const int LOADCELL_SCK_PIN = 40; 
+
+HX711 scale;
 
 uint8_t startstatus = 0;
 uint8_t stopstatus = 0;
@@ -68,7 +83,6 @@ Adafruit_INA228 ch2 = Adafruit_INA228();
 DS3231 rtc;
 
 uint8_t mode = 1;                  // numero pagina 
-
 
 float ntcToTemperature(int adcValue) {
 
@@ -200,7 +214,7 @@ void button_acq(){      // acquisisce i pulsanti, detecta se sono premuti una vo
     delay(50);
   }
 
-  if(displaystatus && mode<4 && startstatus>0 && startstatus <= 20){   //se è stato premuto per < 20 campioni (20 campioni x 50ms = 1s)
+  if(displaystatus && mode<max_n_page && startstatus>0 && startstatus <= 20){   //se è stato premuto per < 20 campioni (20 campioni x 50ms = 1s)
 
       startstatus=0;
       serial_log=false;
@@ -210,6 +224,7 @@ void button_acq(){      // acquisisce i pulsanti, detecta se sono premuti una vo
   if(displaystatus && startstatus>20){   // tenuto premuto per più di 1s (1.05s)
       startstatus=0;
       serial_log=true;                   // attiva log
+      delay(1000);
   }
 
   if(!digitalRead(stopb) && !displaystatus){       
@@ -235,6 +250,7 @@ void button_acq(){      // acquisisce i pulsanti, detecta se sono premuti una vo
   if(displaystatus && stopstatus>20){
     stopstatus=0;
     serial_log=false;
+    delay(1000);
   }
 }
 
@@ -255,6 +271,16 @@ void setup() {
   pinMode(startb,INPUT);
   pinMode(stopb,INPUT);
 
+  scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
+
+  scale.set_scale(cal_factor);
+  scale.tare();
+
+  pinMode(mos_s,OUTPUT);
+  pinMode(mos_gnd,OUTPUT);
+
+  digitalWrite(mos_gnd,LOW);
+
   delay(100);
 
   while(!digitalRead(startb) && !digitalRead(stopb)){  // config orologio
@@ -267,7 +293,7 @@ void setup() {
       getDateStuff(year, month, date, dOW, hour, minute, second);
         
       rtc.setClockMode(false);  // set to 24h
-        //setClockMode(true); // set to 12h
+      //setClockMode(true); // set to 12h
       rtc.setYear(year);
       rtc.setMonth(month);
       rtc.setDate(date);
@@ -602,33 +628,104 @@ void loop() {
       }
     break;
 
+    case 2:                          // test corda, quando la soglia è buona, tenendo premuto start, avvia il test che starta 
+                                     // un timer e il cutter, stoppa quando la forza è minore di una soglia (1N)         
+      uint8_t force;
 
-    case 2:                          // test corda
+      ch1_ready = !digitalRead(ch1_alert_pin);  // acquisisce lo stato dell'ina1 (ready= low)
 
-      display.clearDisplay();
-      display.setCursor(0,0);
-      display.print("pag2");
-      display.display();
-      
+      if(ch1_ready) {            
+
+        busV1 = ch1.readBusVoltage();     // V
+        current1 = ch1.readCurrent();     // mA
+        power1 = ch1.readPower();         // mW
+        energy1 = ch1.readEnergy();       // mWh
+      }
+
+      if (scale.is_ready()) {        // se l'hx711 è pronto aggiorna il valore e lo stampa (80Hz)
+
+        force = scale.get_units(1)*9.81;   //media di 10 numeri? fakest
+
+        display.clearDisplay();
+
+        display.setCursor(0,0);
+        display.print("Load: ");
+        display.print(force);
+        display.print(" N");
+
+        display.setCursor(0,14);
+        display.print(busV1,3);
+        display.print("V");
+
+        display.setCursor(0,23);
+        if(current1 < 1000.0){
+
+          display.print(current1);
+          display.print("mA");
+        }
+        else{
+          display.print(current1/1000.0);
+          display.print("A");
+        }
+
+        display.setCursor(0,32);
+        if(power1 < 1000.0){
+
+          display.print(power1);
+          display.print("mW");
+        }
+        else{
+          display.print(power1/1000.0);
+          display.print("W");
+        }
+
+        display.setCursor(0,41);
+        if(energy1 < 1000.0){
+
+          display.print(energy1);
+          display.print("mWh");
+        }
+        else{
+          display.print(energy1/1000.0);
+          display.print("Wh");
+        }
+    
+        if(serial_log && force > 1){              // e se il log è abilitato starta il test e stampa su seriale
+
+          digitalWrite(mos_s, HIGH);
+
+          display.setCursor(0,54);
+          display.print("STARTED");
+        
+          Serial.print(rtc.getHour(h12Flag, pmFlag), DEC);
+          Serial.print(":");
+          Serial.print(rtc.getMinute(), DEC);
+          Serial.print(":");
+          Serial.print(rtc.getSecond(), DEC);
+          Serial.print(",");
+
+          Serial.print(busV1);
+          Serial.print(",");
+          Serial.print(current1);
+          Serial.print(",");
+          Serial.print(power1);
+          Serial.print(",");
+          Serial.print(energy1);
+          Serial.print(",");
+
+          Serial.println(force);
+        }
+
+        else{
+        
+          digitalWrite(mos_s,LOW);
+          display.setCursor(0,56);
+          display.print("STOPPED");
+        }
+      }
+
+      display.display();   
     break;
 
-    case 3:                        
-
-      display.clearDisplay();
-      display.setCursor(0,0);
-      display.print("pag3");
-      display.display();
-      
-    break;
-
-    case 4:                          // test stocazzo
-
-      display.clearDisplay();
-      display.setCursor(0,0);
-      display.print("pag4 (andrea gay)");
-      display.display();
-      
-    break;
   }
-
 }
