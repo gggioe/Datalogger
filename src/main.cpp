@@ -634,6 +634,8 @@ void loop() {
 
       ch1_ready = !digitalRead(ch1_alert_pin);  // acquisisce lo stato dell'ina1 (ready= low)
 
+      display.clearDisplay();
+
       if(ch1_ready) {            
 
         busV1 = ch1.readBusVoltage();     // V
@@ -645,50 +647,6 @@ void loop() {
       if (scale.is_ready()) {        // se l'hx711 è pronto aggiorna il valore e lo stampa (80Hz)
 
         force = scale.get_units(1)*9.81;   //media di 10 numeri? fakest
-
-        display.clearDisplay();
-
-        display.setCursor(0,0);
-        display.print("Load: ");
-        display.print(force);
-        display.print(" N");
-
-        display.setCursor(0,14);
-        display.print(busV1,3);
-        display.print("V");
-
-        display.setCursor(0,23);
-        if(current1 < 1000.0){
-
-          display.print(current1);
-          display.print("mA");
-        }
-        else{
-          display.print(current1/1000.0);
-          display.print("A");
-        }
-
-        display.setCursor(0,32);
-        if(power1 < 1000.0){
-
-          display.print(power1);
-          display.print("mW");
-        }
-        else{
-          display.print(power1/1000.0);
-          display.print("W");
-        }
-
-        display.setCursor(0,41);
-        if(energy1 < 1000.0){
-
-          display.print(energy1);
-          display.print("mWh");
-        }
-        else{
-          display.print(energy1/1000.0);
-          display.print("Wh");
-        }
     
         if(serial_log && force > 1){              // e se il log è abilitato starta il test e stampa su seriale
 
@@ -724,8 +682,49 @@ void loop() {
         }
       }
 
+      display.setCursor(0,0);
+      display.print("Load: ");
+      display.print(force);
+      display.print(" N");
+
+      display.setCursor(0,14);
+      display.print(busV1,3);
+      display.print("V");
+
+      display.setCursor(0,23);
+      if(current1 < 1000.0){
+
+        display.print(current1);
+        display.print("mA");
+      }
+      else{
+        display.print(current1/1000.0);
+        display.print("A");
+      }
+
+      display.setCursor(0,32);
+      if(power1 < 1000.0){
+
+        display.print(power1);
+        display.print("mW");
+      }
+      else{
+        display.print(power1/1000.0);
+        display.print("W");
+      }
+
+      display.setCursor(0,41);
+      if(energy1 < 1000.0){
+
+        display.print(energy1);
+        display.print("mWh");
+      }
+      else{
+        display.print(energy1/1000.0);
+        display.print("Wh");
+      }
+
       display.display();   
     break;
-
   }
 }
