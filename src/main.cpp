@@ -5,7 +5,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_SSD1306.h>
 #include <DS3231.h>
-#include "HX711.h"
+#include "HX711_MP.h"
 
 #define INA1_ADDR 0x40 // 10000000b
 #define INA2_ADDR 0x41 // 10000001b
@@ -36,12 +36,16 @@
 #define stb_time 10000             // tempo di off schermo
 #define refresh_time 1000          // tempo di refresh variabili pulsanti
 
-#define cal_factor -459.542
+#define cal_factor 87.254
 
 #define max_n_page 2
 
-#define mos_s 37
-#define mos_gnd 38
+#define mos_s 42
+
+HX711_MP lc(2); // numero di punti calibrazione
+
+uint8_t lcdataPin = 39;
+uint8_t lcclockPin = 40;
 
 bool century = false;
 bool h12Flag;
@@ -56,13 +60,6 @@ unsigned long t2;
 bool serial_log = false;
 
 bool displaystatus = true; //acceso
-
-bool loadcell_cal = true;
-
-const int LOADCELL_DOUT_PIN = 39;       //hx711 pin
-const int LOADCELL_SCK_PIN = 40; 
-
-HX711 scale;
 
 uint8_t startstatus = 0;
 uint8_t stopstatus = 0;
@@ -271,15 +268,12 @@ void setup() {
   pinMode(startb,INPUT);
   pinMode(stopb,INPUT);
 
-  scale.begin(LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
-
-  scale.set_scale(cal_factor);
-  scale.tare();
-
   pinMode(mos_s,OUTPUT);
-  pinMode(mos_gnd,OUTPUT);
 
-  digitalWrite(mos_gnd,LOW);
+  lc.begin(lcdataPin, lcclockPin);
+  lc.setCalibrate(0, 1126634.50, 30000);
+  lc.setCalibrate(1, 3840064.50, 0);
+  
 
   delay(100);
 
@@ -630,7 +624,7 @@ void loop() {
 
     case 2:                          // test corda, quando la soglia è buona, tenendo premuto start, avvia il test che starta 
                                      // un timer e il cutter, stoppa quando la forza è minore di una soglia (1N)         
-      uint8_t force;
+      uint16_t force;
 
       ch1_ready = !digitalRead(ch1_alert_pin);  // acquisisce lo stato dell'ina1 (ready= low)
 
@@ -644,23 +638,23 @@ void loop() {
         energy1 = ch1.readEnergy();       // mWh
       }
 
-      if (scale.is_ready()) {        // se l'hx711 è pronto aggiorna il valore e lo stampa (80Hz)
+      if (lc.is_ready()) {        // se l'hx711 è pronto aggiorna il valore e lo stampa (80Hz)
 
-        force = scale.get_units(1)*9.81;   //media di 10 numeri? fakest
+        force = (lc.get_units(2)/1000)*9.81;   //media di 10 numeri? fakest
     
-        if(serial_log && force > 1){              // e se il log è abilitato starta il test e stampa su seriale
+        if(serial_log && force > 10){              // e se il log è abilitato starta il test e stampa su seriale
 
           digitalWrite(mos_s, HIGH);
 
-          display.setCursor(0,54);
+          display.setCursor(64,50);
           display.print("STARTED");
-        
-          Serial.print(rtc.getHour(h12Flag, pmFlag), DEC);
+          
+          Serial.print(rtc.getHour(h12Flag, pmFlag), DEC);       //anche se il terminale acquisice data/ora +ms stampo sti valori per il grafico excel dato che l'ora inserita dal terminale non è riconosciuta 
           Serial.print(":");
           Serial.print(rtc.getMinute(), DEC);
           Serial.print(":");
           Serial.print(rtc.getSecond(), DEC);
-          Serial.print(",");
+          Serial.print(","); 
 
           Serial.print(busV1);
           Serial.print(",");
@@ -677,7 +671,8 @@ void loop() {
         else{
         
           digitalWrite(mos_s,LOW);
-          display.setCursor(0,56);
+          serial_log=false;
+          display.setCursor(64,50);
           display.print("STOPPED");
         }
       }
@@ -687,11 +682,15 @@ void loop() {
       display.print(force);
       display.print(" N");
 
-      display.setCursor(0,14);
+      display.setCursor(0,10);
       display.print(busV1,3);
       display.print("V");
 
-      display.setCursor(0,23);
+      display.setCursor(0,20);
+      display.print(shuntV1);
+      display.print("mV");
+
+      display.setCursor(0,30);
       if(current1 < 1000.0){
 
         display.print(current1);
@@ -702,7 +701,7 @@ void loop() {
         display.print("A");
       }
 
-      display.setCursor(0,32);
+      display.setCursor(0,40);
       if(power1 < 1000.0){
 
         display.print(power1);
@@ -713,7 +712,7 @@ void loop() {
         display.print("W");
       }
 
-      display.setCursor(0,41);
+      display.setCursor(0,50);
       if(energy1 < 1000.0){
 
         display.print(energy1);
