@@ -36,16 +36,15 @@
 #define stb_time 10000             // tempo di off schermo
 #define refresh_time 1000          // tempo di refresh variabili pulsanti
 
-#define cal_factor 87.254
-
 #define max_n_page 2
 
 #define mos_s 42
+#define trigger 39
 
-HX711_MP lc(2); // numero di punti calibrazione
+//HX711_MP lc(2); // numero di punti calibrazione
 
-uint8_t lcdataPin = 39;
-uint8_t lcclockPin = 40;
+//uint8_t lcdataPin = 39;
+//uint8_t lcclockPin = 40;
 
 bool century = false;
 bool h12Flag;
@@ -269,11 +268,11 @@ void setup() {
   pinMode(stopb,INPUT);
 
   pinMode(mos_s,OUTPUT);
+  pinMode(trigger,INPUT_PULLUP);
 
-  lc.begin(lcdataPin, lcclockPin);
-  lc.setCalibrate(0, 1126634.50, 30000);
-  lc.setCalibrate(1, 3840064.50, 0);
-  
+  /*lc.begin(lcdataPin, lcclockPin);
+  lc.setCalibrate(0, 11266340, 30000);
+  lc.setCalibrate(1, 43500000, 0);*/
 
   delay(100);
 
@@ -624,7 +623,8 @@ void loop() {
 
     case 2:                          // test corda, quando la soglia è buona, tenendo premuto start, avvia il test che starta 
                                      // un timer e il cutter, stoppa quando la forza è minore di una soglia (1N)         
-      uint16_t force;
+      //uint16_t force;
+      bool force = false;
 
       ch1_ready = !digitalRead(ch1_alert_pin);  // acquisisce lo stato dell'ina1 (ready= low)
 
@@ -638,11 +638,12 @@ void loop() {
         energy1 = ch1.readEnergy();       // mWh
       }
 
-      if (lc.is_ready()) {        // se l'hx711 è pronto aggiorna il valore e lo stampa (80Hz)
+      if (true /*lc.is_ready()*/) {        // se l'hx711 è pronto aggiorna il valore e lo stampa (80Hz)
 
-        force = (lc.get_units(2)/1000)*9.81;   //media di 10 numeri? fakest
+        //Serial.println("HX711 ready");
+        force = !digitalRead(trigger);         //(lc.get_units(2)/1000)*9.81;   //media di 10 numeri? fakest
     
-        if(serial_log && force > 10){              // e se il log è abilitato starta il test e stampa su seriale
+        if(serial_log && force /*>10*/){              // e se il log è abilitato starta il test e stampa su seriale
 
           digitalWrite(mos_s, HIGH);
 
@@ -658,14 +659,14 @@ void loop() {
 
           Serial.print(busV1);
           Serial.print(",");
-          Serial.print(current1);
+          Serial.print(current1/1000.0, 3);
           Serial.print(",");
           Serial.print(power1);
           Serial.print(",");
-          Serial.print(energy1);
-          Serial.print(",");
+          Serial.println(energy1);
+          //Serial.print(",");
 
-          Serial.println(force);
+          //Serial.println(force);
         }
 
         else{
@@ -679,8 +680,17 @@ void loop() {
 
       display.setCursor(0,0);
       display.print("Load: ");
-      display.print(force);
-      display.print(" N");
+
+      if(force /*>10*/){
+
+        display.print("Tensioned");
+      }
+      else{
+
+        display.print("Broken");
+      }
+      //display.print(force);
+      //display.print(" N");
 
       display.setCursor(0,10);
       display.print(busV1,3);
